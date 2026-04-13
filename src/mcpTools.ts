@@ -192,8 +192,10 @@ export function createOpencodeMcpServer() {
           // prevents shell injection via crafted pattern/path/include values.
           const { stdout } = await execFileAsync("grep", grepArgs, {
             maxBuffer: 10 * 1024 * 1024
-          }).catch((err: NodeJS.ErrnoException & { code?: number | string; stdout?: string }) => {
-            // grep exits with code 1 when there are no matches — that is not an error
+          }).catch((err: NodeJS.ErrnoException & { stdout?: string }) => {
+            // Node.js execFile sets err.code to the numeric exit code when the
+            // process exits with a non-zero status (not a system errno string).
+            // grep exits with code 1 when there are no matches — that is not an error.
             if (err.code === 1) return { stdout: "" }
             throw err
           })
