@@ -2,11 +2,11 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import { exec } from "node:child_process"
+import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { glob as globLib } from "glob"
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 const getCwd = () => process.env.MERIDIAN_WORKDIR ?? process.env.CLAUDE_PROXY_WORKDIR ?? process.cwd()
 
@@ -180,9 +180,23 @@ export function createOpencodeMcpServer() {
         try {
           const searchPath = args.path || getCwd()
           const includePattern = args.include || "*"
-          
-          let cmd = `grep -rn --include="${includePattern}" "${args.pattern}" "${searchPath}" 2>/dev/null || true`
-          const { stdout } = await execAsync(cmd, { maxBuffer: 10 * 1024 * 1024 })
+
+          const grepArgs = [
+            "-rn",
+            `--include=${includePattern}`,
+            args.pattern,
+            searchPath
+          ]
+          // NOTE: execFile avoids the shell entirely — args are passed as an
+          // array and never interpolated into a shell command string, which
+          // prevents shell injection via crafted pattern/path/include values.
+          const { stdout } = await execFileAsync("grep", grepArgs, {
+            maxBuffer: 10 * 1024 * 1024
+          }).catch((err: NodeJS.ErrnoException & { code?: number | string; stdout?: string }) => {
+            // grep exits with code 1 when there are no matches — that is not an error
+            if (err.code === 1) return { stdout: "" }
+            throw err
+          })
           
           return {
             content: [{ type: "text", text: stdout || "(no matches)" }]
